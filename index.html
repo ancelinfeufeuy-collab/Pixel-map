@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>PixelMap 1000×1000</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0d1117;color:#f0f6fc;overflow:hidden}
+header{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid #30363d;background:#161b22;gap:10px}
+.logo{font-weight:800;font-size:18px;white-space:nowrap}.logo span{color:#58a6ff}
+.stats{font-size:13px;color:#8b949e;white-space:nowrap}.stats b{color:#f0f6fc}
+#app{height:calc(100vh - 64px);position:relative}
+#mapWrap{position:absolute;inset:0;background:#080b0f;overflow:hidden;touch-action:none}
+#map{position:absolute;width:1000px;height:1000px;transform-origin:0 0;background-color:#11161d;
+background-image:linear-gradient(#29313a 1px,transparent 1px),linear-gradient(90deg,#29313a 1px,transparent 1px);
+background-size:10px 10px;box-shadow:0 0 0 1px #444}
+#map::after{content:"";position:absolute;inset:0;background-image:linear-gradient(#38424d 1px,transparent 1px),linear-gradient(90deg,#38424d 1px,transparent 1px);background-size:100px 100px;pointer-events:none}
+.pixel{position:absolute;width:10px;height:10px;border:0;cursor:pointer;outline:1px solid rgba(0,0,0,.12)}
+.panel{position:absolute;z-index:5;left:14px;bottom:14px;width:min(340px,calc(100vw - 28px));background:rgba(22,27,34,.96);border:1px solid #30363d;border-radius:14px;padding:14px;box-shadow:0 12px 35px #0008}
+.panel h2{font-size:16px;margin:0 0 8px}.muted{color:#8b949e;font-size:13px}
+.row{display:flex;gap:8px;align-items:center;margin-top:10px}.row>*{flex:1}
+button{border:0;border-radius:9px;padding:10px 12px;background:#238636;color:white;font-weight:700;cursor:pointer}button.secondary{background:#30363d}
+input[type=color]{width:48px;height:40px;padding:2px;background:#30363d;border:1px solid #555;border-radius:8px}
+.zoom{position:absolute;z-index:4;right:14px;top:14px;display:flex;flex-direction:column;gap:7px}.zoom button{width:42px;height:42px;padding:0;font-size:20px;background:#161b22;border:1px solid #30363d}
+.badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#21262d;color:#8b949e;font-size:11px}
+#tip{position:absolute;z-index:6;display:none;pointer-events:none;background:#161b22;border:1px solid #30363d;padding:7px 9px;border-radius:8px;font-size:12px;box-shadow:0 5px 20px #0008}
+@media(max-width:600px){header{height:58px}.logo{font-size:16px}.stats{font-size:11px}#app{height:calc(100vh - 58px)}.panel{bottom:10px}.panel .desktop{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🟦 <span>PixelMap</span> 1000×1000</div>
+  <div class="stats"><b id="sold">0</b> / 1 000 000 pixels · <b id="revenue">0 €</b></div>
+</header>
+<div id="app">
+  <div id="mapWrap"><div id="map"></div><div id="tip"></div></div>
+  <div class="zoom">
+    <button id="plus">+</button><button id="minus">−</button><button id="reset">⌂</button>
+  </div>
+  <div class="panel">
+    <h2>Achète tes pixels</h2>
+    <div class="muted">Clique sur la carte pour sélectionner des pixels. <span class="badge">1 pixel = 1 €</span></div>
+    <div class="row"><input id="color" type="color" value="#58a6ff"><div><b id="selected">0</b> pixel(s) sélectionné(s)<br><span class="muted">Total : <b id="total">0 €</b></span></div></div>
+    <div class="row"><button id="buy">Acheter maintenant</button><button class="secondary" id="clear">Effacer</button></div>
+    <div class="muted" style="margin-top:9px">Démo : aucun paiement réel n'est effectué.</div>
+  </div>
+</div>
+<script>
+const map=document.querySelector('#map'), wrap=document.querySelector('#mapWrap');
+let scale=.55, ox=0, oy=0, dragging=false, sx=0,sy=0,startX=0,startY=0;
+const selected=new Set(), sold=new Map();
+function apply(){map.style.transform=`translate(${ox}px,${oy}px) scale(${scale})`}
+function center(){ox=(wrap.clientWidth-1000*scale)/2;oy=(wrap.clientHeight-1000*scale)/2;apply()}
+function zoom(f,cx=wrap.clientWidth/2,cy=wrap.clientHeight/2){
+ let ns=Math.max(.15,Math.min(5,scale*f)); let k=ns/scale;
+ ox=cx-(cx-ox)*k;oy=cy-(cy-oy)*k;scale=ns;apply()
+}
+function cellAt(e){
+ const r=wrap.getBoundingClientRect(), x=(e.clientX-r.left-ox)/scale, y=(e.clientY-r.top-oy)/scale;
+ if(x<0||y<0||x>=1000||y>=1000)return null;
+ return [Math.floor(x),Math.floor(y)]
+}
+function key(x,y){return x+','+y}
+function update(){
+ document.querySelector('#selected').textContent=selected.size;
+ document.querySelector('#total').textContent=selected.size+' €';
+ document.querySelector('#sold').textContent=sold.size.toLocaleString('fr-FR');
+ document.querySelector('#revenue').textContent=sold.size.toLocaleString('fr-FR')+' €';
+}
+function renderPixel(x,y,color){
+ let k=key(x,y), el=document.querySelector(`[data-p="${k}"]`);
+ if(!el){el=document.createElement('div');el.className='pixel';el.dataset.p=k;el.style.left=x*10+'px';el.style.top=y*10+'px';el.addEventListener('click',ev=>{ev.stopPropagation();toggle(x,y)});map.appendChild(el)}
+ el.style.background=color;el.title=`Pixel ${x},${y}`;
+}
+function toggle(x,y){
+ const k=key(x,y); if(sold.has(k))return;
+ if(selected.has(k)){selected.delete(k);const el=document.querySelector(`[data-p="${k}"]`);if(el)el.style.background='';}
+ else{selected.add(k);renderPixel(x,y,document.querySelector('#color').value)}
+ update()
+}
+map.addEventListener('click',e=>{const c=cellAt(e);if(c)toggle(...c)});
+wrap.addEventListener('pointerdown',e=>{dragging=true;sx=e.clientX;sy=e.clientY;startX=ox;startY=oy;wrap.setPointerCapture(e.pointerId)});
+wrap.addEventListener('pointermove',e=>{if(!dragging)return;ox=startX+e.clientX-sx;oy=startY+e.clientY-sy;apply()});
+wrap.addEventListener('pointerup',()=>dragging=false);
+wrap.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1.15:.87,e.clientX,e.clientY)},{passive:false});
+document.querySelector('#plus').onclick=()=>zoom(1.25);
+document.querySelector('#minus').onclick=()=>zoom(.8);
+document.querySelector('#reset').onclick=center;
+document.querySelector('#clear').onclick=()=>{selected.forEach(k=>{const el=document.querySelector(`[data-p="${k}"]`);if(el)el.style.background=''});selected.clear();update()};
+document.querySelector('#color').oninput=e=>selected.forEach(k=>{const el=document.querySelector(`[data-p="${k}"]`);if(el)el.style.background=e.target.value});
+document.querySelector('#buy').onclick=()=>{
+ if(!selected.size)return alert('Sélectionne au moins un pixel.');
+ if(!confirm(`Acheter ${selected.size} pixel(s) pour ${selected.size} € ?\n\nDémo : aucun paiement réel.`))return;
+ const color=document.querySelector('#color').value;
+ selected.forEach(k=>{sold.set(k,color);const [x,y]=k.split(',').map(Number);renderPixel(x,y,color)});
+ selected.clear();update();alert('Achat simulé avec succès !');
+};
+center();update();
+</script>
+</body></html>
